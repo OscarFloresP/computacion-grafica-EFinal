@@ -1,27 +1,24 @@
-﻿#include <stdlib.h> // aleatorios
-#include <time.h> // aleatorios
+﻿#include <stdlib.h>
+#include <time.h> 
 
 #include "files.h"
 #include "model.h"
 #include "cam.h"
+#include "PV2D.h"
 
 #include <shader.h>
 #include <texture.h>
  
-// settings
 const i32 SCR_WIDTH = 1280;
 const i32 SCR_HEIGHT = 720;
 const f32  ASPECT = (f32)SCR_WIDTH / (f32)SCR_HEIGHT;
 
-// camera 
 Cam* cam;
 
-// timing
+
 f32 deltaTime = 0.0f;
 f32 lastFrame = 0.0f;
 bool wireframe = false;
-
-// lighting
 
 void processInput(GLFWwindow* window) {
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
@@ -74,8 +71,59 @@ void load_positions(u32& n, std::vector<glm::vec3>& positions) {
 		}
 	}
 }
+bool interseccion(PV2D p, PV2D v, PV2D v_1, PV2D &n, GLdouble &hit, bool usar_mascaras)
+	{
+		GLdouble dist[3], proy[3]; int sign[3];
+		int nHits= 0; double t_hit[3]; PV2D norm[3]; 
 
+		for(int i=0; i<3; i++)
+		{
+			PV2D vector_p_pi = p.crearVector_RestaPto2Pto(_v[i]);
+			
+			dist[i] = vector_p_pi.productoEscalar(v_1.vectorNormal()); 
+			proy[i] = vector_p_pi.productoEscalar(v_1); 
+			if (dist[i] > _epsilon) 
+				sign[i] = 1;
+			else if (dist[i] < -(_epsilon)) 
+				sign[i] = -1;
+			else 
+			{
+				sign[i] = 0;
 
+				t_hit[nHits] = proy[i]; 
+				norm[nHits] = _n_v[i];
+				nHits++;
+			}
+		}
+		if(abs(sign[0] + sign[1] + sign[2]) == 3) 
+		{
+			return false;
+		}
+		else 
+		{
+			for(int i=0; i<3; i++)
+			{
+				int j = (i+1)%3;
+				if(sign[i]*sign[j] < 0) 
+				{
+					t_hit[nHits] = (proy[i]*dist[j] - dist[i]*proy[j]) / (dist[j]-dist[i]);
+					norm[nHits] = _n[i];
+					nHits++;
+				}			
+			}
+		}
+
+		int min = 0;
+		for(int i=0; i<nHits; i++)
+		{
+			if(t_hit[min] > t_hit[i])
+				min = i;
+		}
+
+		n = norm[min];
+		hit = t_hit[min]/v.moduloVect(); 
+		return true;
+	}
 
 i32 main() {
 	GLFWwindow* window = glutilInit(3, 3, SCR_WIDTH, SCR_HEIGHT, "Agar.io");
@@ -105,9 +153,6 @@ i32 main() {
 	Model* jugador = new Model(files, "rock/rock.obj");
 	Model* enemigo = new Model(files, "planet/planet.obj");
 
-
-	// cargar la matrices de posiciones
-
 	std::vector<glm::mat4> modelMatricestierra;
 
 	glm::mat4 modelaux;
@@ -131,9 +176,7 @@ i32 main() {
 	{
 		unsigned int VAO = tierra->meshes[i].Vao;
 		glBindVertexArray(VAO);
-		// set attribute pointers for matrix (4 times vec4)
 
-		// configure instanced array tierra
 		unsigned int buffertierra;
 		glGenBuffers(1, &buffertierra);
 		glBindBuffer(GL_ARRAY_BUFFER, buffertierra);
@@ -160,21 +203,17 @@ i32 main() {
 	
 	
 	while (!glfwWindowShouldClose(window)) {
-		// per-frame logic
 		f32 currentFrame = glfwGetTime();
 		deltaTime = currentFrame - lastFrame;
 		lastFrame = currentFrame;
 
-		// input
 		processInput(window);
 
-		// render
 		glClearColor(64.0f / 255.0f, 224.0f / 255.0f, 208.0f / 255.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
 
 
-		// configurando transformation matrices
 		glm::mat4 projection = glm::perspective(cam->zoom, ASPECT, 0.1f, 100.0f);
 		glm::vec3 viewPos = cam->pos;
 		glm::mat4 view = cam->getViewM4();
@@ -184,7 +223,7 @@ i32 main() {
 		mapaShader->setVec3("pointLight.ambient", 0.1f, 0.1f, 0.1f);
 		mapaShader->setVec3("pointLight.diffuse", 0.8f, 0.8f, 0.8f);
 		mapaShader->setVec3("pointLight.specular", 1.0f, 1.0f, 1.0f);
-		mapaShader->setF32("pointLight.constant", 1.0f); // attenuation (distance = 50)
+		mapaShader->setF32("pointLight.constant", 1.0f); 
 		mapaShader->setF32("pointLight.linear", 0.09f);
 		mapaShader->setF32("pointLight.quadratic", 0.032f);
 
@@ -200,8 +239,7 @@ i32 main() {
 		modelShader->setVec3("lightColor", lightColor);
 		modelShader->setVec3("viewPos", cam->pos);
 
-		
-		// dibujar el robot
+
 		model = glm::mat4(1.0f);
 		model = glm::translate(model, cam->pos + vec3(0.0f, -0.7f, 0.0f));
 		model = glm::scale(model, glm::vec3(0.05f, 0.05f, 0.05f));
@@ -209,23 +247,18 @@ i32 main() {
 		jugador->Draw(modelShader);
 		
 
-		// dibujar el sol
 		model = glm::mat4(1.0f);
 		model = glm::translate(model, glm::vec3(n, (n * 2.0f) / 3.0f, n));
 		model = glm::scale(model, glm::vec3(5.0f, 5.0f, 5.0f));
 		modelShader->setMat4("model", model);
 		enemigo->Draw(modelShader);
 
-		// mapa
 		mapaShader->useProgram();
 		mapaShader->setF32("material.shininess", 32.0f);
 		mapaShader->setF32("material.specular", 0.5f);
 		mapaShader->setI32("texture_diffuse1", 0);
 		glActiveTexture(GL_TEXTURE0);
 
-		
-		// dibujar tierra
-		
 		glBindTexture(GL_TEXTURE_2D, tierra->textures_loaded[0].id);
 		for (unsigned int i = 0; i < tierra->meshes.size(); i++) {
 			glBindVertexArray(tierra->meshes[i].Vao);
@@ -238,7 +271,6 @@ i32 main() {
 		glfwPollEvents();
 	}
 
-	// de-allocate all resources once they've outlived their purpose
 	delete cam;
 	delete mapaShader;
 	delete tierra;
